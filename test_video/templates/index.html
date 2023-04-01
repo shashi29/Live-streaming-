@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Streaming</title>
+    <link rel="stylesheet" href="https://vjs.zencdn.net/7.15.4/video-js.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            width: 80%;
+            margin: auto;
+        }
+
+        header {
+            background-color: #333;
+            color: #fff;
+            padding: 1em;
+            text-align: center;
+        }
+
+        form {
+            margin-bottom: 2em;
+        }
+
+        label {
+            font-size: 1.2em;
+        }
+
+        input[type="file"] {
+            margin-top: 1em;
+        }
+
+        input[type="submit"] {
+            background-color: #333;
+            border: none;
+            color: #fff;
+            padding: 0.5em 1em;
+            font-size: 1.2em;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #555;
+        }
+
+        video {
+            display: block;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Live Streaming</h1>
+        </header>
+        <main>
+            <form method="POST" enctype="multipart/form-data">
+                <label for="video-file">Choose a video file to upload:</label><br>
+                <input type="file" id="video-file" name="video-file"><br><br>
+                <input type="submit" value="Upload and Play">
+            </form>
+            <br>
+            {% if video_path %}
+            <video id="my-video" class="video-js" controls preload="auto" width="640" height="264"
+                poster="MY_VIDEO_POSTER.jpg" data-setup="{}">
+                <source src="{{ video_path }}" type="video/mp4">
+                <p class="vjs-no-js">
+                    To view this video please enable JavaScript, and consider upgrading to a web browser that
+                    <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+                </p>
+            </video>
+            {% endif %}
+        </main>
+    </div>
+    <script src="https://vjs.zencdn.net/7.15.4/video.min.js"></script>
+</body>
+</html>
