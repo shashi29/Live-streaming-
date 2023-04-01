@@ -6,6 +6,7 @@ function App() {
   const [processing, setProcessing] = useState(false);
   const [words, setWords] = useState([]);
   const [selectedWords, setSelectedWords] = useState([]);
+  const [videoUrl, setVideoUrl] = useState(null);
 
   const handleFileInputChange = (event) => {
     setSelectedFile(event.target.files[0]);
@@ -19,6 +20,7 @@ function App() {
     axios.post('/process_video', formData)
       .then(response => {
         setWords(response.data.words);
+        setVideoUrl(response.data.video_url);
         setProcessing(false);
       })
       .catch(error => {
@@ -45,6 +47,7 @@ function App() {
         <button type="submit" disabled={!selectedFile || processing}>Submit</button>
       </form>
       {processing && <p>Processing video...</p>}
+      {videoUrl && <video controls src={videoUrl} />}
       {words.length > 0 && (
         <div>
           <h2>Word statistics:</h2>
