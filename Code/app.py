@@ -8,6 +8,8 @@ from typing import Tuple, List
 from datetime import datetime
 from google.cloud import storage, speech_v1p1beta1 as speech
 from google.cloud.speech import SpeechClient, RecognitionAudio, RecognitionConfig
+from google.cloud.speech_v1 import enums
+from google.cloud.speech_v1 import types
 from fastapi import FastAPI, Request
 
 from pydub import AudioSegment
@@ -17,6 +19,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from urllib.parse import urlparse
+from pydub.utils import mediainfo
+
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/workspaces/Live-streaming-/backend/google_env.json"
 
@@ -94,7 +98,7 @@ def upload_audio_to_gcs_bucket(bucket_name: str, audio_path: str) -> str:
     return gcs_path
 
 
-def transcribe_audio(gcs_uri: str, sample_rate: int) -> str:
+def transcribe_audio(gcs_uri: str, sample_rate: int, channels: any) -> str:
     """
     Transcribes the audio file specified by the GCS URI using Google Cloud Speech-to-Text API.
 
@@ -113,11 +117,15 @@ def transcribe_audio(gcs_uri: str, sample_rate: int) -> str:
     client = SpeechClient()
 
     audio = RecognitionAudio(uri=gcs_uri)
-    config = RecognitionConfig(
-        encoding="LINEAR16",
-        sample_rate_hertz=sample_rate,
-        language_code="en-US",
-    )
+    config = {
+        "language_code": "en-US",
+        "sample_rate_hertz": int(sample_rate),
+        "encoding": enums.RecognitionConfig.AudioEncoding.LINEAR16,
+        "audio_channel_count": int(channels),
+        "enable_word_time_offsets": True,
+        "model": "video",
+        "enable_automatic_punctuation":True
+    }
     try:
         operation = client.long_running_recognize(config=config, audio=audio)
 
@@ -215,6 +223,16 @@ def delete_file(file_path):
     except OSError as e:
         print(f"Error occurred while deleting file: {e}")
 
+def video_info(video_filepath):
+    """ this function returns number of channels, bit rate, and sample rate of the video"""
+
+    video_data = mediainfo(video_filepath)
+    channels = video_data["channels"]
+    bit_rate = video_data["bit_rate"]
+    sample_rate = video_data["sample_rate"]
+
+    return channels, bit_rate, sample_rate
+
 @app.get("/health")
 async def health_check():
     return {"status": "App is running"}
@@ -249,8 +267,9 @@ async def process_video(request: Request, video_request: VideoProcessingRequest)
         gcs_uri = upload_audio_to_gcs_bucket("live-stream-video", local_audio_path)
 
         # Transcribe the audio
-        buffer, rate = get_audio_sample_rate(local_audio_path)
-        transcript, response = transcribe_audio(gcs_uri, rate)
+        #buffer, rate = get_audio_sample_rate(local_audio_path)
+        channels, bit_rate, sample_rate = video_info(local_video_path)
+        transcript, response = transcribe_audio(gcs_uri, bit_rate, channels)
 
         # Count the n-grams
         unigram_counts = count_ngrams(transcript, 1)
