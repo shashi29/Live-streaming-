@@ -237,13 +237,13 @@ def create_mask_audio(word_duration, beep_audio):
         new_beep_audio = beep_audio * (int(word_duration//len(beep_audio))+1)
         return new_beep_audio[:word_duration]
     
-def process_audio(audio_path, beep_path, df):
+def process_audio(audio_path, beep_path, df, bad_word):
     audio = AudioSegment.from_wav(audio_path)
     #beep_audio = AudioSegment.from_wav(beep_path)
-    with open('mask_word.txt') as fp1: 
-        mask_word = fp1.read() 
+    # with open('mask_word.txt') as fp1: 
+    #     mask_word = fp1.read() 
 
-    bad_word = mask_word.split("\n")
+    # bad_word = mask_word.split("\n")
     mask_audio = AudioSegment.empty()
     for index, row in df.iterrows():
         try:

@@ -8,12 +8,21 @@ import string
 from collections import Counter
 from utility import *
 from run import *
+from pydantic import BaseModel
+import shutil
+from pathlib import Path
+
 
 app = FastAPI()
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 DOWNLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 ALLOWED_EXTENSIONS = {'mp4'}
 
+
+
+def delete_wav_file():
+    [shutil.os.remove(f) for f in glob.glob('*.wav')]
+    [p.unlink() for p in Path().glob('*.wav')]
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -100,11 +109,12 @@ def process_video(video_path, filename):
 
     # Generate the output JSON
     output_json = generate_output_json(transcript, unigram_counts, bigram_counts, trigram_counts)
+    delete_wav_file()
     return output_json
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-
+    delete_wav_file()
     filename = file.filename
     
     if not allowed_file(filename):
@@ -123,6 +133,51 @@ async def upload_file(file: UploadFile = File(...)):
         return {"error": str(e)}
 
     return output
+
+class MuteRequest(BaseModel):
+  video_name: str
+  words_to_mute: list[str]
+
+@app.post("/mute_video")
+async def mute_video(request: MuteRequest):
+    delete_wav_file()
+    video_name = request.video_name
+    words_to_mute = request.words_to_mute
+    video_path = os.path.join(os.getcwd(), video_name)
+    video_name = os.path.basename(video_path)
+    video_name = video_name.split(".")[0]
+    raw_audio_name = f'{video_name}_audio.wav'
+    beep_path = "beep.wav"
+    raw_audio_path = os.path.join(os.getcwd(), raw_audio_name)
+    processed_audio_name = f'{video_name}_final.wav'
+    processed_audio_path = os.path.join(os.getcwd(), processed_audio_name)
+    BUCKET_NAME = "audio_2020"
+    no_audio_video_path = video_path[:-4] + '_No_Audio.mp4'
+    filename = video_path[:-4] + '_final.mp4'
+    processed_video = os.path.join(os.getcwd(),filename)
+    
+    channels, bit_rate, sample_rate = video_info(video_path)
+    blob_name = video_to_audio(video_path, raw_audio_path, channels, bit_rate, sample_rate)
+    
+    gcs_uri = f"gs://{BUCKET_NAME}/{raw_audio_name}"
+    response = long_running_recognize(gcs_uri, channels, sample_rate)
+    response_df = word_timestamp(response)
+
+    # words_to_mute = wordlist.words
+    words_to_mute = ["machine learning", "to", "the"]
+
+    #mask audio
+    mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
+    mask_audio.export(processed_audio_path, format="wav")
+    #Remove audio 
+    command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
+    os.system(command)
+    command = f"ffmpeg -i {no_audio_video_path} -i {processed_audio_path} -c:v copy -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -y {processed_video}"
+    os.system(command)
+    #add_srt_video("subtitles.srt", processed_video)
+    delete_wav_file()
+    return FileResponse(path=processed_video, media_type='video/mp4')
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
