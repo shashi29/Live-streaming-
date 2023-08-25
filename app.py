@@ -11,13 +11,22 @@ from run import *
 from pydantic import BaseModel
 import shutil
 from pathlib import Path
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI()
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 DOWNLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 ALLOWED_EXTENSIONS = {'mp4'}
+origins = ["*"] 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def delete_wav_file():
