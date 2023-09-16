@@ -239,7 +239,7 @@ def create_mask_audio(word_duration, beep_audio):
     
 def process_audio(audio_path, beep_path, df, bad_word):
     audio = AudioSegment.from_wav(audio_path)
-    #beep_audio = AudioSegment.from_wav(beep_path)
+    beep_audio = AudioSegment.from_wav(beep_path)
     # with open('mask_word.txt') as fp1: 
     #     mask_word = fp1.read() 
 
@@ -252,8 +252,8 @@ def process_audio(audio_path, beep_path, df, bad_word):
             word_end_time = row['word_start_time_lag']
             word_duration = word_end_time - word_start_time
             if word in bad_word:
-                #mask_audio_word = create_mask_audio(word_duration,beep_audio) 
-                mask_audio_word = AudioSegment.silent(duration = word_duration)
+                mask_audio_word = create_mask_audio(word_duration,beep_audio) 
+                #mask_audio_word = AudioSegment.silent(duration = word_duration)
                 mask_audio += mask_audio_word
             else:
                 mask_audio += audio[word_start_time:word_end_time]

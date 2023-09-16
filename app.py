@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import shutil
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 
 
 app = FastAPI()
@@ -20,13 +21,13 @@ DOWNLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 ALLOWED_EXTENSIONS = {'mp4'}
 origins = ["*"] 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 
 def delete_wav_file():
@@ -144,14 +145,15 @@ async def upload_file(file: UploadFile = File(...)):
     return output
 
 class MuteRequest(BaseModel):
-  video_name: str
-  words_to_mute: list[str]
+    video_name: str
+    words_to_mute: List[List[str]]
 
 @app.post("/mute_video")
 async def mute_video(request: MuteRequest):
     delete_wav_file()
     video_name = request.video_name
     words_to_mute = request.words_to_mute
+    print("Words to mute", words_to_mute)
     video_path = os.path.join(os.getcwd(), video_name)
     video_name = os.path.basename(video_path)
     video_name = video_name.split(".")[0]
@@ -173,7 +175,8 @@ async def mute_video(request: MuteRequest):
     response_df = word_timestamp(response)
 
     # words_to_mute = wordlist.words
-    words_to_mute = ["machine learning", "to", "the"]
+    #words_to_mute = ["machine learning", "to", "the"]
+    words_to_mute = [word.lower() for sublist in words_to_mute for sentence in sublist for word in sentence.split()]
 
     #mask audio
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
