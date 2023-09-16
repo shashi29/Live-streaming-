@@ -197,6 +197,7 @@ def word_timestamp(response):
     for result in response.results:
         for i in range(len(result.alternatives[0].words) - 1):
             word = result.alternatives[0].words[i].word
+            word = word.lower()
             #if word in bad_word:
             word_start_sec = result.alternatives[0].words[i].start_time.seconds
             word_end_sec = result.alternatives[0].words[i].end_time.seconds

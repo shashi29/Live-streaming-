@@ -31,8 +31,18 @@ origins = ["*"]
 
 
 def delete_wav_file():
-    [shutil.os.remove(f) for f in glob.glob('*.wav')]
-    [p.unlink() for p in Path().glob('*.wav')]
+    for filename in glob.glob('*.wav'):
+        if filename != 'beep.wav':
+            try:
+                os.remove(filename)
+            except Exception as e:
+                print(f"Error deleting {filename}: {e}")
+    for p in Path().glob('*.wav'):
+        if p.name != 'beep.wav':
+            try:
+                p.unlink()
+            except Exception as e:
+                print(f"Error deleting {p}: {e}")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -146,7 +156,7 @@ async def upload_file(file: UploadFile = File(...)):
 
 class MuteRequest(BaseModel):
     video_name: str
-    words_to_mute: List[List[str]]
+    words_to_mute: List[str]
 
 @app.post("/mute_video")
 async def mute_video(request: MuteRequest):
@@ -176,7 +186,7 @@ async def mute_video(request: MuteRequest):
 
     # words_to_mute = wordlist.words
     #words_to_mute = ["machine learning", "to", "the"]
-    words_to_mute = [word.lower() for sublist in words_to_mute for sentence in sublist for word in sentence.split()]
+    words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
 
     #mask audio
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
