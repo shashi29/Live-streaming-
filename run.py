@@ -39,6 +39,7 @@ import numpy as np
 from scipy.io import wavfile
 #Read from pickel file info
 import pickle
+import pytesseract
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="credentials.json"
 
@@ -77,6 +78,24 @@ def detect_text_googleVisonApi(path, frame_count):
     fp1.close()
     print(f"[INFO] Processing Frame {frame_count}")
 
+def detect_text_pytesseract(img, frame_count, mask_words):
+
+#   with open('mask_word.txt') as fp:
+#     mask_words = fp.read().split("\n")
+  
+  text = pytesseract.image_to_string(img)
+  words = text.split()
+
+  file = open(f'intermediate/temp_{frame_count}.txt', 'w')
+
+  for word in words:
+    if word in mask_words:
+      x, y, w, h = pytesseract.image_to_boxes(img) 
+      file.write(f"{x} {y} {x+w} {y+h}\n")
+
+  file.close()
+
+  print(f"[INFO] Processing frame {frame_count}")
 
 def bb_intersection_over_union(boxA, boxB):
 	xA = max(boxA[0], boxB[0])
