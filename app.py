@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-
+from process_video import *
 
 app = FastAPI()
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
@@ -157,12 +157,35 @@ async def upload_file(file: UploadFile = File(...)):
 class MuteRequest(BaseModel):
     video_name: str
     words_to_mute: List[str]
+    enable_subititle_mask: int
+
+def mask_video_subtitile(input_video_path, WORDS_TO_MUTE):
+    interval = 1
+    # Queues for frames and detected text
+    text_queue = list()
+    frame_queue = list()
+    frame_queue = extract_frames(input_video_path, interval, frame_queue)
+    for frame_info in frame_queue:
+        frame = frame_info[0]
+        frame_index = frame_info[1]
+        masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
+        info = dict()
+        info['frame_index'] = int(frame_index)
+        info['bounding_box'] = masked_words_box if len(masked_words_box) else []
+        info['mask_word'] = masked_words
+        text_queue.append(info)
+    text_queue = pd.DataFrame(text_queue)
+    # text_queue.to_csv("out4.csv", index=False)
+    # Call the function with the sample data
+    #text_queue = interpolate_frames_and_drop_duplicates(text_queue)
+    save_processed_video(input_video_path, input_video_path, text_queue)
 
 @app.post("/mute_video")
 async def mute_video(request: MuteRequest):
     delete_wav_file()
     video_name = request.video_name
     words_to_mute = request.words_to_mute
+    
     print("Words to mute", words_to_mute)
     video_path = os.path.join(os.getcwd(), video_name)
     video_name = os.path.basename(video_path)
@@ -184,19 +207,21 @@ async def mute_video(request: MuteRequest):
     response = long_running_recognize(gcs_uri, channels, sample_rate)
     response_df = word_timestamp(response)
 
-    # words_to_mute = wordlist.words
-    #words_to_mute = ["machine learning", "to", "the"]
     words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
 
     #mask audio
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
     mask_audio.export(processed_audio_path, format="wav")
+
     #Remove audio 
     command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
     os.system(command)
     command = f"ffmpeg -i {no_audio_video_path} -i {processed_audio_path} -c:v copy -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -y {processed_video}"
     os.system(command)
     #add_srt_video("subtitles.srt", processed_video)
+    #Enable subtitle mask
+    if request.enable_subititle_mask:
+        mask_video_subtitile(processed_video, words_to_mute)
     delete_wav_file()
     return FileResponse(path=processed_video, media_type='video/mp4')
 
