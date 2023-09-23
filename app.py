@@ -159,7 +159,7 @@ class MuteRequest(BaseModel):
     words_to_mute: List[str]
     enable_subititle_mask: int
 
-def mask_video_subtitile(input_video_path, WORDS_TO_MUTE):
+def mask_video_subtitile(input_video_path, no_audio_video_path, WORDS_TO_MUTE):
     interval = 1
     # Queues for frames and detected text
     text_queue = list()
@@ -175,10 +175,10 @@ def mask_video_subtitile(input_video_path, WORDS_TO_MUTE):
         info['mask_word'] = masked_words
         text_queue.append(info)
     text_queue = pd.DataFrame(text_queue)
-    # text_queue.to_csv("out4.csv", index=False)
+    #text_queue.to_csv("out4.csv", index=False)
     # Call the function with the sample data
-    #text_queue = interpolate_frames_and_drop_duplicates(text_queue)
-    save_processed_video(input_video_path, input_video_path, text_queue)
+    #text_queue = fill_empty_rows(text_queue)
+    save_processed_video(input_video_path, no_audio_video_path, text_queue)
 
 @app.post("/mute_video")
 async def mute_video(request: MuteRequest):
@@ -213,15 +213,17 @@ async def mute_video(request: MuteRequest):
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
     mask_audio.export(processed_audio_path, format="wav")
 
-    #Remove audio 
-    command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
-    os.system(command)
+    #Enable subtitle mask
+    if request.enable_subititle_mask:
+        mask_video_subtitile(video_path, no_audio_video_path, words_to_mute)
+    else:
+        #Remove audio 
+        command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
+        os.system(command)
+    
     command = f"ffmpeg -i {no_audio_video_path} -i {processed_audio_path} -c:v copy -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -y {processed_video}"
     os.system(command)
     #add_srt_video("subtitles.srt", processed_video)
-    #Enable subtitle mask
-    if request.enable_subititle_mask:
-        mask_video_subtitile(processed_video, words_to_mute)
     delete_wav_file()
     return FileResponse(path=processed_video, media_type='video/mp4')
 

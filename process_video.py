@@ -4,6 +4,8 @@ import multiprocessing
 import logging
 import pandas as pd
 import ast
+import concurrent.futures
+import os
 
 # Configure logging
 # logging.basicConfig(filename='processing.log', level=logging.INFO,
@@ -57,10 +59,18 @@ def process_frame(frame, frame_index, WORDS_TO_MUTE):
 
     for i in range(len(words['text'])):
         if words['text'][i].lower() in WORDS_TO_MUTE:
-            #print(f"Masked word found in frame: {frame_index} with Pytesseract: {words['text'][i]}")
+            print(f"Masked word found in frame: {frame_index} with Pytesseract: {words['text'][i]}")
             x, y, w, h = words['left'][i], words['top'][i], words['width'][i], words['height'][i]
             masked_words_box.append((x, y, w, h))
             masked_words.append(words['text'][i].lower())
+
+    # Draw bounding boxes on the frame and save it
+    # frame_with_boxes = frame.copy()
+    # for (x, y, w, h) in masked_words_box:
+    #     cv2.rectangle(frame_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), -1)  # Green bounding box
+
+    # save_path = os.path.join("save_frame", f"frame_{frame_index}.png")
+    # cv2.imwrite(save_path, frame_with_boxes)
 
     #text_queue.put(masked_words)
     return masked_words_box, frame_index, masked_words
@@ -105,6 +115,62 @@ def save_processed_video(video_path, output_path, text_queue):
     out.release()
     cv2.destroyAllWindows()
 
+def fill_empty_rows(data):
+    last_non_empty_mask_word = []
+    last_non_empty_bounding_box = []
+    last_rows = None
+
+    # Iterate through the DataFrame to identify the last rows with non-empty 'mask_word'
+    for index, row in data.iterrows():
+        if len(row['mask_word']) > 0:
+            last_rows = index
+
+    for index, row in data.iterrows():
+        mask_word = row['mask_word']
+        bounding_box = row['bounding_box']
+
+        if len(mask_word) > 0:
+            last_non_empty_mask_word = mask_word
+            last_non_empty_bounding_box = bounding_box
+
+        if index < last_rows:
+            data.at[index, 'mask_word'] = last_non_empty_mask_word
+            data.at[index, 'bounding_box'] = last_non_empty_bounding_box
+
+    return data
+
+def process_frames_in_parallel(frame_queue, WORDS_TO_MUTE):
+    num_worker_threads = os.cpu_count()//2
+
+    # Define a function to process a single frame
+    def process_frame_worker(frame_info):
+        frame = frame_info[0]
+        frame_index = frame_info[1]
+        masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
+        info = dict()
+        info['frame_index'] = int(frame_index)
+        info['bounding_box'] = masked_words_box if len(masked_words_box) else []
+        info['mask_word'] = masked_words
+        return info
+
+    # Create a ThreadPoolExecutor with the calculated number of workers
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_worker_threads) as executor:
+        # Process frames in parallel
+        futures = [executor.submit(process_frame_worker, frame_info) for frame_info in frame_queue]
+
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
+
+        # Retrieve the results from completed tasks
+        text_queue = []
+        for future in futures:
+            result = future.result()
+            text_queue.append(result)
+
+    # Convert the results into a DataFrame
+    text_queue_df = pd.DataFrame(text_queue)
+    return text_queue_df
+
 if __name__ == '__main__':
     input_video_path = 'test4.mp4'  # Replace with your input video file path
     output_video_path = 'test4_with_masks.mp4'  # Specify the output video file path
@@ -129,9 +195,10 @@ if __name__ == '__main__':
         info['bounding_box'] = masked_words_box if len(masked_words_box) else []
         info['mask_word'] = masked_words
         text_queue.append(info)
+    #text_queue = process_frames_in_parallel(frame_queue, WORDS_TO_MUTE)
     text_queue = pd.DataFrame(text_queue)
-    text_queue.to_csv("out4.csv", index=False)
+    text_queue.to_csv("out4_test.csv", index=False)
     # Call the function with the sample data
-    #text_queue = interpolate_frames_and_drop_duplicates(text_queue)
+    #text_queue = fill_empty_rows(text_queue)
     save_processed_video(input_video_path, output_video_path, text_queue)
 
