@@ -21,13 +21,13 @@ DOWNLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
 ALLOWED_EXTENSIONS = {'mp4'}
 origins = ["*"] 
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def delete_wav_file():
