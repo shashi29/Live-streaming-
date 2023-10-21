@@ -6,6 +6,7 @@ import pandas as pd
 import ast
 import concurrent.futures
 import os
+import numpy as np
 
 # Configure logging
 # logging.basicConfig(filename='processing.log', level=logging.INFO,
@@ -171,6 +172,90 @@ def process_frames_in_parallel(frame_queue, WORDS_TO_MUTE):
     text_queue_df = pd.DataFrame(text_queue)
     return text_queue_df
 
+
+def find_range(num, ranges):
+    for start, end in ranges:
+        if num >= start and num <= end:
+            return [start, end]
+    return None, None
+
+# Function to fill missing frames
+def fill_missing_frames(frame_ranges, df):
+    filled_df = df.copy()  # Create a copy of the DataFrame
+    for index, rows in df.iterrows():
+        bounding_box = rows['bounding_box']#ast.literal_eval(rows['bounding_box'])
+        try:
+            if len(bounding_box) == 0:
+                start, end = find_range(index, frame_ranges)
+                if start is not None and end is not None:
+                    df_filtered = df.loc[start:end]
+                    df_filtered = df_filtered[df_filtered['bounding_box'] != '[]']
+                    unique_data = df_filtered.drop_duplicates(subset=['mask_word'])
+                    replace_bounding_box = list()
+                    replace_mask_word = list()
+                    for bounding_box, mask_word in zip(unique_data['bounding_box'].tolist(), unique_data['mask_word'].tolist()):
+                        #replace_bounding_box.extend(ast.literal_eval(bounding_box)) 
+                        #replace_mask_word.extend(ast.literal_eval(mask_word))
+                        replace_bounding_box.extend(bounding_box) 
+                        replace_mask_word.extend(mask_word)
+                    if replace_mask_word != []:
+                        print(replace_bounding_box, replace_mask_word)
+                        for i in range(index, end + 1):
+                            filled_df.at[i, 'bounding_box'] =  replace_bounding_box
+                            filled_df.at[i, 'mask_word'] =  replace_mask_word
+        except Exception as ex:
+            continue
+    return filled_df
+
+
+def find_similar_frame_ranges(video_path, threshold=10):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("Error: Could not open video.")
+        return []
+
+    frame_ranges = []
+    start_frame = None
+    prev_frame = None
+
+    frame_index = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break  # Exit the loop when no more frames are available
+
+        # Convert the frame to grayscale for comparison
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        height, width = gray_frame.shape  # Get the height and width of the frame
+
+        if prev_frame is not None:
+            # Calculate the absolute difference between the current and previous frames
+
+            # Ensure the frames have the same dimensions for comparison
+            prev_frame = prev_frame[:height, :width]
+            gray_frame = gray_frame[:height, :width]
+
+            frame_diff = cv2.absdiff(prev_frame, gray_frame)
+
+            # Calculate the mean value of the frame difference
+            mean_diff = frame_diff.mean()
+
+            if mean_diff <= threshold:
+                if start_frame is None:
+                    start_frame = frame_index - 1  # Start a new range
+                end_frame = frame_index  # Update the end frame
+            elif start_frame is not None:
+                frame_ranges.append((start_frame, end_frame))  # End the current range
+                start_frame = None
+
+        prev_frame = gray_frame.copy()
+        frame_index += 1
+
+    cap.release()
+
+    return frame_ranges
+
 if __name__ == '__main__':
     input_video_path = 'test4.mp4'  # Replace with your input video file path
     output_video_path = 'test4_with_masks.mp4'  # Specify the output video file path
@@ -189,16 +274,27 @@ if __name__ == '__main__':
     for frame_info in frame_queue:
         frame = frame_info[0]
         frame_index = frame_info[1]
-        masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
-        info = dict()
-        info['frame_index'] = int(frame_index)
-        info['bounding_box'] = masked_words_box if len(masked_words_box) else []
-        info['mask_word'] = masked_words
-        text_queue.append(info)
+        if frame_index % 10 == 0:
+            masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
+            info = dict()
+            info['frame_index'] = int(frame_index)
+            info['bounding_box'] = masked_words_box if len(masked_words_box) else []
+            info['mask_word'] = masked_words
+            text_queue.append(info)
+        else:
+            info = dict()
+            info['frame_index'] = int(frame_index)
+            info['bounding_box'] =  []
+            info['mask_word'] = ''
+            text_queue.append(info)
+
     #text_queue = process_frames_in_parallel(frame_queue, WORDS_TO_MUTE)
     text_queue = pd.DataFrame(text_queue)
-    text_queue.to_csv("out4_test.csv", index=False)
+    #text_queue.to_csv("out4_test.csv", index=False)
+    threshold = 2
+    frame_ranges = find_similar_frame_ranges(input_video_path, threshold)
+    text_queue = fill_missing_frames(frame_ranges, text_queue)
+
     # Call the function with the sample data
     #text_queue = fill_empty_rows(text_queue)
     save_processed_video(input_video_path, output_video_path, text_queue)
-

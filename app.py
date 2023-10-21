@@ -168,14 +168,27 @@ def mask_video_subtitile(input_video_path, no_audio_video_path, WORDS_TO_MUTE):
     for frame_info in frame_queue:
         frame = frame_info[0]
         frame_index = frame_info[1]
-        masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
-        info = dict()
-        info['frame_index'] = int(frame_index)
-        info['bounding_box'] = masked_words_box if len(masked_words_box) else []
-        info['mask_word'] = masked_words
-        text_queue.append(info)
+        if frame_index % 10 == 0:
+            masked_words_box, frame_index, masked_words = process_frame(frame, frame_index, WORDS_TO_MUTE)
+            info = dict()
+            info['frame_index'] = int(frame_index)
+            info['bounding_box'] = masked_words_box if len(masked_words_box) else []
+            info['mask_word'] = masked_words
+            text_queue.append(info)
+        else:
+            info = dict()
+            info['frame_index'] = int(frame_index)
+            info['bounding_box'] =  []
+            info['mask_word'] = ''
+            text_queue.append(info)
+
+    #text_queue = process_frames_in_parallel(frame_queue, WORDS_TO_MUTE)
     text_queue = pd.DataFrame(text_queue)
-    #text_queue.to_csv("out4.csv", index=False)
+    #text_queue.to_csv("out4_test.csv", index=False)
+    threshold = 2
+    frame_ranges = find_similar_frame_ranges(input_video_path, threshold)
+    text_queue = fill_missing_frames(frame_ranges, text_queue)
+
     # Call the function with the sample data
     #text_queue = fill_empty_rows(text_queue)
     save_processed_video(input_video_path, no_audio_video_path, text_queue)
