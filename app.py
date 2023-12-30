@@ -193,12 +193,27 @@ def mask_video_subtitile(input_video_path, no_audio_video_path, WORDS_TO_MUTE):
     #text_queue = fill_empty_rows(text_queue)
     save_processed_video(input_video_path, no_audio_video_path, text_queue)
 
-@app.post("/mute_video")
-async def mute_video(request: MuteRequest):
-    delete_wav_file()
-    video_name = request.video_name
-    words_to_mute = request.words_to_mute
+import cv2
+
+def has_video_frames(video_path):
+  
+  cap = cv2.VideoCapture(video_path)
+
+  has_frames = True
+
+  while has_frames:
+      has_frames, frame = cap.read()
     
+      if not has_frames:
+          break
+
+  cap.release()
+  
+  return has_frames
+
+def mask_audio_function(video_name, words_to_mute):
+    delete_wav_file()
+
     print("Words to mute", words_to_mute)
     video_path = os.path.join(os.getcwd(), video_name)
     video_name = os.path.basename(video_path)
@@ -211,24 +226,66 @@ async def mute_video(request: MuteRequest):
     BUCKET_NAME = "audio_2020"
     no_audio_video_path = video_path[:-4] + '_No_Audio.mp4'
     filename = video_path[:-4] + '_final.mp4'
-    processed_video = os.path.join(os.getcwd(),filename)
-    
+    processed_video = os.path.join(os.getcwd(),filename) 
     channels, bit_rate, sample_rate = video_info(video_path)
+    
     blob_name = video_to_audio(video_path, raw_audio_path, channels, bit_rate, sample_rate)
     
     gcs_uri = f"gs://{BUCKET_NAME}/{raw_audio_name}"
     response = long_running_recognize(gcs_uri, channels, sample_rate)
+    
     response_df = word_timestamp(response)
 
     words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
 
     #mask audio
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
+    
     mask_audio.export(processed_audio_path, format="wav")
 
+    return video_path, no_audio_video_path, processed_audio_path, processed_video
+
+@app.post("/mute_video")
+async def mute_video(request: MuteRequest):
+    delete_wav_file()
+    video_name = request.video_name
+    words_to_mute = request.words_to_mute
+    
+    print("Words to mute", words_to_mute)
+    # video_path = os.path.join(os.getcwd(), video_name)
+    # video_name = os.path.basename(video_path)
+    # video_name = video_name.split(".")[0]
+    # raw_audio_name = f'{video_name}_audio.wav'
+    # beep_path = "beep.wav"
+    # raw_audio_path = os.path.join(os.getcwd(), raw_audio_name)
+    # processed_audio_name = f'{video_name}_final.wav'
+    # processed_audio_path = os.path.join(os.getcwd(), processed_audio_name)
+    # BUCKET_NAME = "audio_2020"
+    # no_audio_video_path = video_path[:-4] + '_No_Audio.mp4'
+    # filename = video_path[:-4] + '_final.mp4'
+    # processed_video = os.path.join(os.getcwd(),filename)
+    
+    # channels, bit_rate, sample_rate = video_info(video_path)
+    # blob_name = video_to_audio(video_path, raw_audio_path, channels, bit_rate, sample_rate)
+    
+    # # gcs_uri = f"gs://{BUCKET_NAME}/{raw_audio_name}"
+    # # response = long_running_recognize(gcs_uri, channels, sample_rate)
+    # # response_df = word_timestamp(response)
+
+    # words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
+
+    # #mask audio
+    # mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
+    # mask_audio.export(processed_audio_path, format="wav")
+    video_path,no_audio_video_path,processed_audio_path,processed_video =  mask_audio_function(video_name, words_to_mute)
     #Enable subtitle mask
     if request.enable_subititle_mask:
         mask_video_subtitile(video_path, no_audio_video_path, words_to_mute)
+        if not has_video_frames(video_path):
+            video_path,no_audio_video_path,processed_audio_path,processed_video = mask_audio_function(video_name, words_to_mute)
+            #Remove audio 
+            command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
+            os.system(command)
     else:
         #Remove audio 
         command = f"ffmpeg -i {video_path} -vcodec copy -an -y {no_audio_video_path}"
