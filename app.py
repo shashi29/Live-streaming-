@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from process_video import *
+import pickle
 
 app = FastAPI()
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__)) + '/'
@@ -211,6 +212,80 @@ def has_video_frames(video_path):
   
   return has_frames
 
+# def mask_audio_function(video_name, words_to_mute):
+#     #delete_wav_file()
+
+#     print("Words to mute", words_to_mute)
+#     video_path = os.path.join(os.getcwd(), video_name)
+#     video_name = os.path.basename(video_path)
+#     video_name = video_name.split(".")[0]
+#     raw_audio_name = f'{video_name}_audio.wav'
+#     beep_path = "beep.wav"
+#     raw_audio_path = os.path.join(os.getcwd(), raw_audio_name)
+#     processed_audio_name = f'{video_name}_final.wav'
+#     processed_audio_path = os.path.join(os.getcwd(), processed_audio_name)
+#     BUCKET_NAME = "audio_2020"
+#     no_audio_video_path = video_path[:-4] + '_No_Audio.mp4'
+#     filename = video_path[:-4] + '_final.mp4'
+#     processed_video = os.path.join(os.getcwd(),filename) 
+#     channels, bit_rate, sample_rate = video_info(video_path)
+    
+#     blob_name = video_to_audio(video_path, raw_audio_path, channels, bit_rate, sample_rate)
+    
+#     gcs_uri = f"gs://{BUCKET_NAME}/{raw_audio_name}"
+#     response = long_running_recognize(gcs_uri, channels, sample_rate)
+    
+#     response_df = word_timestamp(response)
+
+#     words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
+
+#     #mask audio
+#     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
+    
+#     mask_audio.export(processed_audio_path, format="wav")
+
+#     return video_path, no_audio_video_path, processed_audio_path, processed_video
+
+# Assuming you have the long_running_recognize, video_info, video_to_audio, word_timestamp, and process_audio functions defined
+
+# Assuming you have the long_running_recognize, video_info, video_to_audio, word_timestamp, and process_audio functions defined
+
+def long_running_recognize_cached(gcs_uri, channels, sample_rate, cache_folder="recognize_cache"):
+    # Check if cache folder exists, create if not
+    if not os.path.exists(cache_folder):
+        os.makedirs(cache_folder)
+
+    # Extract video filename from gcs_uri
+    video_filename = os.path.basename(gcs_uri).split(".")[0]
+
+    # Check if response is already cached
+    cache_file = os.path.join(cache_folder, f"{video_filename}_response.pkl")
+    if os.path.exists(cache_file):
+        # Load the cached response using pickle.load
+        with open(cache_file, "rb") as cache:
+            response_str = cache.read()
+            response = pickle.loads(response_str)
+        return response
+
+    # If not cached, perform recognition
+    response = long_running_recognize(gcs_uri, channels, sample_rate)
+
+    # Convert the response object to a string using pickle.dumps
+    response_str = pickle.dumps(response)
+
+    # Save the response to the cache file using pickle.dump
+    with open(cache_file, "wb") as cache:
+        cache.write(response_str)
+
+    return response
+
+def load_cached_response(cache_file):
+    # Load the cached response using pickle.load
+    with open(cache_file, "rb") as cache:
+        response_str = cache.read()
+        response = pickle.loads(response_str)
+    return response
+
 def mask_audio_function(video_name, words_to_mute):
     delete_wav_file()
 
@@ -226,21 +301,23 @@ def mask_audio_function(video_name, words_to_mute):
     BUCKET_NAME = "audio_2020"
     no_audio_video_path = video_path[:-4] + '_No_Audio.mp4'
     filename = video_path[:-4] + '_final.mp4'
-    processed_video = os.path.join(os.getcwd(),filename) 
+    processed_video = os.path.join(os.getcwd(), filename)
     channels, bit_rate, sample_rate = video_info(video_path)
-    
+
     blob_name = video_to_audio(video_path, raw_audio_path, channels, bit_rate, sample_rate)
-    
+
     gcs_uri = f"gs://{BUCKET_NAME}/{raw_audio_name}"
-    response = long_running_recognize(gcs_uri, channels, sample_rate)
-    
+
+    # Use the cached response if available
+    response = long_running_recognize_cached(gcs_uri, channels, sample_rate)
+
     response_df = word_timestamp(response)
 
     words_to_mute = [word.lower() for string in words_to_mute for word in string.split()]
 
     #mask audio
     mask_audio = process_audio(raw_audio_path, beep_path, response_df, words_to_mute)
-    
+
     mask_audio.export(processed_audio_path, format="wav")
 
     return video_path, no_audio_video_path, processed_audio_path, processed_video
